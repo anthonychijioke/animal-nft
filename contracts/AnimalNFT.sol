@@ -14,19 +14,30 @@ contract AnimalNFT is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable {
 
     constructor() ERC721("ZOOLANDER", "ZOO") {}
 
-    uint256 owners = 0;
 
     struct Animal {
         uint256 tokenId;
-        address payable seller;
         address payable owner;
+        address payable adoptionCenter;
         uint256 price;
-        bool sold;
+        bool adopted;
     }
 
     mapping(uint256 => Animal) private animals;
 
-    function safeMint(string memory uri, uint256 price) public payable returns (uint256) {
+    modifier exists(uint tokenId){
+        require(_exists(tokenId), "Query of nonexistent animal");
+        _;
+    }
+    /// @dev adds an animal to the platform
+    function safeMint(string calldata uri, uint256 price)
+        external
+        payable
+        onlyOwner
+        returns (uint256)
+    {
+        require(bytes(uri).length > 0, "Empty uri");
+        require(price > 0, "Invalid price");
         uint256 tokenId = _tokenIdCounter.current();
         _tokenIdCounter.increment();
         _mint(msg.sender, tokenId);
@@ -36,10 +47,7 @@ contract AnimalNFT is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable {
         return tokenId;
     }
 
-    function addAnimal(
-        uint256 tokenId,
-        uint256 price
-    ) private {
+    function addAnimal(uint256 tokenId, uint256 price) private {
         require(price > 0, "Price must be at least 1 wei");
         animals[tokenId] = Animal(
             tokenId,
@@ -51,39 +59,56 @@ contract AnimalNFT is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable {
 
         _transfer(msg.sender, address(this), tokenId);
     }
-
-    function adoptAnimal(uint256 tokenId) public payable {
-        uint256 price = animals[tokenId].price;
-        address seller = animals[tokenId].seller;
+    /// @dev users can adopt an animal with id of tokenId
+    function adoptAnimal(uint256 tokenId) external payable exists(tokenId) {
         require(
-            msg.value >= price,
+            animals[tokenId].owner != msg.sender,
+            "You can't adopt your own animal"
+        );
+        require(!animals[tokenId].adopted, "Animal is already adopted");
+        uint256 price = animals[tokenId].price;
+        require(
+            msg.value == price,
             "Please submit the asking price in order to complete the purchase"
         );
+        address owner = animals[tokenId].owner;
+        animals[tokenId].adoptionCenter = payable(address(0));
+        animals[tokenId].adopted = true;
         animals[tokenId].owner = payable(msg.sender);
-        animals[tokenId].sold = true;
-        animals[tokenId].seller = payable(address(0));
+        animals[tokenId].price = 0;
         _transfer(address(this), msg.sender, tokenId);
-
-        payable(seller).transfer(msg.value);
+        (bool success, ) = payable(owner).call{value: msg.value}("");
+        require(success, "Payment failed");
     }
 
-    function releaseAnimal(uint256 tokenId) public payable {
+    /// @dev users can put an animal back on adoption
+    function releaseAnimal(uint256 tokenId) public payable exists(tokenId) {
         require(
             animals[tokenId].owner == msg.sender,
             "Only owner of animal can perform this operation"
         );
-        animals[tokenId].sold = false;
-        animals[tokenId].seller = payable(msg.sender);
-        animals[tokenId].owner = payable(address(this));
+        require(animals[tokenId].adopted, "Animal is already up for adoption");
+        animals[tokenId].adopted = false;
+        animals[tokenId].adoptionCenter = payable(address(this));
 
         _transfer(msg.sender, address(this), tokenId);
     }
 
-    function getAnimal(uint256 tokenId)
-        public
-        view
-        returns (Animal memory)
-    {
+
+    /// @dev users can retrieve animal from the adoption center
+    function retrieveAnimal(uint tokenId) public exists(tokenId) {
+        require(
+            animals[tokenId].owner == msg.sender,
+            "Only adoptionCenter of animal can perform this operation"
+        );
+        require(!animals[tokenId].adopted, "Animal is already up for adoption");
+
+        animals[tokenId].adoptionCenter = payable(address(0));
+        animals[tokenId].adopted = true;
+        _transfer(address(this), msg.sender, tokenId);
+    }
+
+    function getAnimal(uint256 tokenId) public view returns (Animal memory) {
         return animals[tokenId];
     }
 
@@ -91,9 +116,6 @@ contract AnimalNFT is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable {
         return _tokenIdCounter.current();
     }
 
-    function getOwners() public view returns (uint256) {
-        return owners;
-    }
 
     function _beforeTokenTransfer(
         address from,
