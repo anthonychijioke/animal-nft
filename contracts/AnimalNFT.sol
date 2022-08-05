@@ -12,9 +12,13 @@ contract AnimalNFT is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable {
 
     Counters.Counter private _tokenIdCounter;
 
-    constructor() ERC721("ZOOLANDER", "ZOO") {}
-
     uint256 owners = 0;
+    uint256 public releaseFee;
+
+    constructor(uint _releaseFee) ERC721("ZOOLANDER", "ZOO") {
+        releaseFee = _releaseFee;
+    }
+
 
     struct Animal {
         uint256 tokenId;
@@ -40,7 +44,7 @@ contract AnimalNFT is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable {
         uint256 tokenId,
         uint256 price
     ) private {
-        require(price > 0, "Price must be at least 1 wei");
+        require(price > 0, "Price must be at least 1 celo");
         animals[tokenId] = Animal(
             tokenId,
             payable(msg.sender),
@@ -55,6 +59,7 @@ contract AnimalNFT is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable {
     function adoptAnimal(uint256 tokenId) public payable {
         uint256 price = animals[tokenId].price;
         address seller = animals[tokenId].seller;
+        require(msg.sender != seller, "You can't adopt your animal");
         require(
             msg.value >= price,
             "Please submit the asking price in order to complete the purchase"
@@ -72,6 +77,8 @@ contract AnimalNFT is ERC721, ERC721Enumerable, ERC721URIStorage, Ownable {
             animals[tokenId].owner == msg.sender,
             "Only owner of animal can perform this operation"
         );
+        require(msg.value >= releaseFee, "Send the release fee");
+        
         animals[tokenId].sold = false;
         animals[tokenId].seller = payable(msg.sender);
         animals[tokenId].owner = payable(address(this));
