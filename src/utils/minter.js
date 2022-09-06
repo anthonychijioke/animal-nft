@@ -1,9 +1,18 @@
-import { create as ipfsHttpClient } from "ipfs-http-client";
+import { create } from "ipfs-http-client";
 import axios from "axios";
 import { ethers } from "ethers";
 
 // initialize IPFS
-const client = ipfsHttpClient("https://ipfs.infura.io:5001/api/v0");
+
+const authorization =
+    "Basic " +
+    Buffer.from(
+        process.env.REACT_APP_PROJECT_ID +
+        ":" +
+        process.env.REACT_APP_PROJECT_SECRET
+    ).toString("base64");
+
+const client = create({ url: "https://ipfs.infura.io:5001/api/v0", headers: { authorization } });
 
 // mint an NFT
 export const addAnimal = async (
@@ -31,7 +40,7 @@ export const addAnimal = async (
             const added = await client.add(data);
 
             // IPFS url for uploaded metadata
-            const url = `https://ipfs.infura.io/ipfs/${added.path}`;
+            const url = `https://diac.infura-ipfs.io/ipfs/${added.path}`;
             const _price = ethers.utils.parseUnits(String(price), "ether");
 
             // mint the NFT and save the IPFS url to the blockchain
@@ -55,7 +64,7 @@ export const uploadToIpfs = async (e) => {
         const added = await client.add(file, {
             progress: (prog) => console.log(`received: ${prog}`),
         });
-        return `https://ipfs.infura.io/ipfs/${added.path}`;
+        return `https://diac.infura-ipfs.io/ipfs/${added.path}`;
     } catch (error) {
         console.log("Error uploading file: ", error);
     }
@@ -72,6 +81,7 @@ export const getAnimals = async (minterContract) => {
                 const _animal = await minterContract.methods.getAnimal(i).call();
                 const res = await minterContract.methods.tokenURI(i).call();
                 const meta = await fetchNftMeta(res);
+                const image = meta.data.image.replace("ipfs.infura.", "diac.infura-ipfs.")
                 const owner = await fetchNftOwner(minterContract, i);
                 resolve({
                     index: i,
@@ -80,7 +90,7 @@ export const getAnimals = async (minterContract) => {
                     price: _animal.price,
                     sold: _animal.sold,
                     name: meta.data.name,
-                    image: meta.data.image,
+                    image,
                     description: meta.data.description,
                     attributes: meta.data.attributes,
                 });
@@ -97,7 +107,9 @@ export const getAnimals = async (minterContract) => {
 export const fetchNftMeta = async (ipfsUrl) => {
     try {
         if (!ipfsUrl) return null;
-        const meta = await axios.get(ipfsUrl);
+        const meta = await axios.get(
+            ipfsUrl.replace("ipfs.infura.", "diac.infura-ipfs.")
+        );
         return meta;
     } catch (e) {
         console.log({ e });
